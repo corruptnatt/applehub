@@ -1,0 +1,253 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+
+-- ESP Settings
+local ESP = {
+    Enabled = true,
+    SkeletonColor = Color3.fromRGB(255, 0, 0),
+    ShowTeam = false,
+    Thickness = 1,
+    NametagsEnabled = true,
+    NametagColor = Color3.fromRGB(255, 255, 255),
+    NametagSize = 14,
+    NametagOffset = Vector3.new(0, -2.5, 0),
+    DistanceEnabled = true,
+    DistanceColor = Color3.fromRGB(255, 255, 255),
+    DistanceSize = 14,
+    DistanceOffset = Vector3.new(0, -4, 0)
+}
+
+
+-- R15 Skeleton Connections
+local R15Connections = {
+    {parent = "Head", child = "UpperTorso"},
+    {parent = "UpperTorso", child = "LowerTorso"},
+    {parent = "UpperTorso", child = "LeftUpperArm"},
+    {parent = "LeftUpperArm", child = "LeftLowerArm"},
+    {parent = "LeftLowerArm", child = "LeftHand"},
+    {parent = "UpperTorso", child = "RightUpperArm"},
+    {parent = "RightUpperArm", child = "RightLowerArm"},
+    {parent = "RightLowerArm", child = "RightHand"},
+    {parent = "LowerTorso", child = "LeftUpperLeg"},
+    {parent = "LeftUpperLeg", child = "LeftLowerLeg"},
+    {parent = "LeftLowerLeg", child = "LeftFoot"},
+    {parent = "LowerTorso", child = "RightUpperLeg"},
+    {parent = "RightUpperLeg", child = "RightLowerLeg"},
+    {parent = "RightLowerLeg", child = "RightFoot"}
+}
+
+
+-- R6 Skeleton Connections
+local R6Connections = {
+    {parent = "Head", child = "Torso"},
+    {parent = "Torso", child = "Left Arm"},
+    {parent = "Torso", child = "Right Arm"},
+    {parent = "Torso", child = "Left Leg"},
+    {parent = "Torso", child = "Right Leg"}
+}
+
+
+-- Drawing Storage
+local DrawingObjects = {}
+
+
+-- Color Menu UI
+local function CreateColorMenu()
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "ESPColorMenu"
+    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+   
+    local MainFrame = Instance.new("Frame")
+    MainFrame.Size = UDim2.new(0, 200, 0, 250)
+    MainFrame.Position = UDim2.new(0.5, -100, 0.5, -125)
+    MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    MainFrame.BorderSizePixel = 0
+    MainFrame.Visible = false
+    MainFrame.Parent = ScreenGui
+   
+    local Title = Instance.new("TextLabel")
+    Title.Size = UDim2.new(1, 0, 0, 30)
+    Title.Text = "ESP Color Options"
+    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Title.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    Title.Parent = MainFrame
+   
+    local ColorOptions = {
+        {name = "Red", color = Color3.fromRGB(255, 0, 0)},
+        {name = "Green", color = Color3.fromRGB(0, 255, 0)},
+        {name = "Blue", color = Color3.fromRGB(0, 0, 255)},
+        {name = "Yellow", color = Color3.fromRGB(255, 255, 0)},
+        {name = "Purple", color = Color3.fromRGB(255, 0, 255)},
+        {name = "White", color = Color3.fromRGB(255, 255, 255)}
+    }
+   
+    for i, option in ipairs(ColorOptions) do
+        local Button = Instance.new("TextButton")
+        Button.Size = UDim2.new(0.9, 0, 0, 30)
+        Button.Position = UDim2.new(0.05, 0, 0, 35 + (i-1) * 35)
+        Button.Text = option.name
+        Button.BackgroundColor3 = option.color
+        Button.TextColor3 = Color3.fromRGB(255, 255, 255)
+        Button.Parent = MainFrame
+       
+        Button.MouseButton1Click:Connect(function()
+            ESP.SkeletonColor = option.color
+            MainFrame.Visible = false
+        end)
+    end
+   
+    return MainFrame
+end
+
+
+local ColorMenu = CreateColorMenu()
+
+
+-- Create Line Function
+local function CreateLine()
+    local line = Drawing.new("Line")
+    line.Visible = false
+    line.Thickness = ESP.Thickness
+    line.Color = ESP.SkeletonColor
+    return line
+end
+
+
+-- Create Nametag Function
+local function CreateNametag()
+    local text = Drawing.new("Text")
+    text.Visible = false
+    text.Center = true
+    text.Outline = true
+    text.Size = ESP.NametagSize
+    text.Color = ESP.NametagColor
+    text.Font = 3
+    return text
+end
+
+
+-- Create Distance Label Function
+local function CreateDistanceLabel()
+    local text = Drawing.new("Text")
+    text.Visible = false
+    text.Center = true
+    text.Outline = true
+    text.Size = ESP.DistanceSize
+    text.Color = ESP.DistanceColor
+    text.Font = 3
+    return text
+end
+
+
+-- Cleanup Function
+local function CleanupDrawings(player)
+    if DrawingObjects[player] then
+        for _, line in pairs(DrawingObjects[player].lines) do
+            line:Remove()
+        end
+        if DrawingObjects[player].nametag then
+            DrawingObjects[player].nametag:Remove()
+        end
+        if DrawingObjects[player].distanceLabel then
+            DrawingObjects[player].distanceLabel:Remove()
+        end
+        DrawingObjects[player] = nil
+    end
+end
+
+
+-- Player Removal Handler
+Players.PlayerRemoving:Connect(function(player)
+    CleanupDrawings(player)
+end)
+
+
+-- Update ESP Function
+local function UpdateESP()
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Humanoid") then
+            local connections = player.Character.Humanoid.RigType == Enum.HumanoidRigType.R15 and R15Connections or R6Connections
+           
+            if not DrawingObjects[player] then
+                DrawingObjects[player] = {
+                    lines = {},
+                    nametag = CreateNametag(),
+                    distanceLabel = CreateDistanceLabel()
+                }
+                for _ in ipairs(connections) do
+                    table.insert(DrawingObjects[player].lines, CreateLine())
+                end
+            end
+           
+            -- Update Skeleton Lines
+            for i, connection in ipairs(connections) do
+                local line = DrawingObjects[player].lines[i]
+                local parentPart = player.Character:FindFirstChild(connection.parent)
+                local childPart = player.Character:FindFirstChild(connection.child)
+               
+                if parentPart and childPart then
+                    local parentPos = Camera:WorldToViewportPoint(parentPart.Position)
+                    local childPos = Camera:WorldToViewportPoint(childPart.Position)
+                   
+                    if ESP.Enabled then
+                        line.From = Vector2.new(parentPos.X, parentPos.Y)
+                        line.To = Vector2.new(childPos.X, childPos.Y)
+                        line.Color = ESP.SkeletonColor
+                        line.Visible = parentPos.Z > 0 and childPos.Z > 0
+                    else
+                        line.Visible = false
+                    end
+                end
+            end
+           
+            -- Update Nametag and Distance
+            local rootPart = player.Character:FindFirstChild("HumanoidRootPart")
+            if rootPart then
+                local namePos = Camera:WorldToViewportPoint(rootPart.Position + ESP.NametagOffset)
+                local nametag = DrawingObjects[player].nametag
+               
+                if ESP.Enabled and ESP.NametagsEnabled then
+                    nametag.Position = Vector2.new(namePos.X, namePos.Y)
+                    nametag.Text = player.Name
+                    nametag.Size = ESP.NametagSize
+                    nametag.Visible = namePos.Z > 0
+                else
+                    nametag.Visible = false
+                end
+               
+                -- Update Distance Label
+                local distancePos = Camera:WorldToViewportPoint(rootPart.Position + ESP.DistanceOffset)
+                local distanceLabel = DrawingObjects[player].distanceLabel
+               
+                if ESP.Enabled and ESP.DistanceEnabled then
+                    local distance = (rootPart.Position - Camera.CFrame.Position).Magnitude
+                    local meters = distance * 0.28
+                    distanceLabel.Position = Vector2.new(distancePos.X, distancePos.Y)
+                    distanceLabel.Text = string.format("%.1fm", meters)
+                    distanceLabel.Visible = distancePos.Z > 0
+                else
+                    distanceLabel.Visible = false
+                end
+            end
+        end
+    end
+end
+
+
+-- Handle - key press
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == Enum.KeyCode.Minus then
+        ColorMenu.Visible = not ColorMenu.Visible
+    end
+end)
+
+
+-- Run ESP Update
+RunService.RenderStepped:Connect(UpdateESP)
+
+
+
